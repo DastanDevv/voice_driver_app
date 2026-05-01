@@ -1,0 +1,11 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+
+/// Управление темой приложения (light/dark) — может переключаться голосом.
+class ThemeCubit extends Cubit<ThemeMode> {
+  ThemeCubit() : super(ThemeMode.light);
+
+  void setLight() => emit(ThemeMode.light);
+  void setDark() => emit(ThemeMode.dark);
+  void toggle() => emit(state == ThemeMode.light ? ThemeMode.dark : ThemeMode.light);
+}
