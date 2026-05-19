@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-import '../../../../core/semantic/semantic_command.dart';
 import '../../../../core/semantic/semantic_command_runner.dart';
 import '../../../../core/voice/voice_command_coordinator.dart';
 import '../../../../shared/strings/app_strings.dart';
 import '../../../../shared/theme/theme_cubit.dart';
 import '../../../analytics/presentation/pages/analytics_page.dart';
+import '../../../architecture/presentation/pages/architecture_page.dart';
+import '../../../chat/presentation/cubit/chat_cubit.dart';
+import '../../../chat/presentation/pages/chat_page.dart';
 import '../../../command_history/presentation/cubit/command_history_cubit.dart';
 import '../../../command_history/presentation/pages/command_history_page.dart';
 import '../../../nlp_lab/presentation/pages/nlp_lab_page.dart';
@@ -40,50 +42,89 @@ class _HomeShellState extends State<HomeShell> {
         commandRunner: widget.commandRunner,
         voiceCoordinator: widget.voiceCoordinator,
       ),
-      const NlpLabPage(),
+      ChatPage(
+        commandRunner: widget.commandRunner,
+        voiceCoordinator: widget.voiceCoordinator,
+      ),
+      NlpLabPage(voiceCoordinator: widget.voiceCoordinator),
       const AnalyticsPage(),
     ];
 
-    widget.voiceCoordinator.onCommandUx = _handleCommandUx;
+    widget.voiceCoordinator.onCommandsExecuted = _handleCommandsExecuted;
   }
 
-  void _handleCommandUx(SemanticCommand cmd, String rawText) {
-    if (!mounted) return;
+  void _handleCommandsExecuted(List<RunOutcome> outcomes, String rawText) {
+    if (!mounted || outcomes.isEmpty) return;
 
-    if (cmd.intentCode == 'navigate') {
-      _handleNavigate(cmd);
-      return;
+    final chat = context.read<ChatCubit>();
+    chat.appendUserMessage(rawText);
+
+    for (final outcome in outcomes) {
+      _applySideEffects(outcome);
+      final assistantText = outcome.execution.message ?? _phraseFor(outcome);
+      chat.appendAssistantMessage(assistantText, command: outcome.command);
     }
 
-    if (cmd.intentCode == 'theme_toggle') {
-      _handleThemeToggle(cmd);
-      return;
-    }
-
-    if (cmd.intentCode == 'undo') {
-      _showSnack('Функция отмены будет реализована');
-      return;
-    }
-
-    if (cmd.intentCode == 'unknown') {
+    final last = outcomes.last;
+    if (last.command.intentCode == 'unknown') {
       _showSnack(AppStrings.unknownCommandSnack);
-    } else if (cmd.confidence < 0.5) {
+    } else if (last.command.confidence < 0.5) {
       _showSnack(AppStrings.lowConfidenceHint);
     }
   }
 
-  void _handleNavigate(SemanticCommand cmd) {
-    final target = cmd.entities['target'];
+  String _phraseFor(RunOutcome outcome) {
+    switch (outcome.command.intentCode) {
+      case 'create_task':
+        return 'Задача добавлена';
+      case 'show_tasks':
+        return 'Показаны задачи';
+      case 'complete_task':
+        return 'Задача отмечена выполненной';
+      case 'delete_task':
+        return 'Задача удалена';
+      case 'search_task':
+        return 'Результаты поиска показаны';
+      case 'navigate':
+        return 'Переключаю экран';
+      case 'theme_toggle':
+        return 'Тема изменена';
+      case 'undo':
+        return 'Действие отменено';
+      case 'help':
+        return 'Я умею создавать, показывать, выполнять, удалять, искать, считать задачи, менять тему и навигацию.';
+      default:
+        return 'Не удалось распознать команду';
+    }
+  }
+
+  void _applySideEffects(RunOutcome outcome) {
+    final cmd = outcome.command;
+    if (cmd.intentCode == 'navigate') {
+      _handleNavigate(cmd.entities['target']);
+    } else if (cmd.intentCode == 'theme_toggle') {
+      _handleThemeToggle(cmd.entities['theme']);
+    }
+  }
+
+  void _handleNavigate(Object? target) {
     switch (target) {
       case 'tasks':
         setState(() => _currentIndex = 0);
-        _showSnack('Задачи');
-      case 'nlp_lab':
+      case 'chat':
         setState(() => _currentIndex = 1);
-        _showSnack('NLP Лаборатория');
-      case 'analytics':
+      case 'nlp_lab':
         setState(() => _currentIndex = 2);
-        _showSnack('Аналитика');
+      case 'analytics':
+        setState(() => _currentIndex = 3);
+      case 'architecture':
+        Navigator.of(context).push<void>(
+          MaterialPageRoute(
+            builder: (_) => ArchitecturePage(
+              voiceCoordinator: widget.voiceCoordinator,
+            ),
+          ),
+        );
       case 'history':
         Navigator.of(context).push<void>(
           MaterialPageRoute<void>(
@@ -96,15 +137,12 @@ class _HomeShellState extends State<HomeShell> {
     }
   }
 
-  void _handleThemeToggle(SemanticCommand cmd) {
-    final theme = cmd.entities['theme'];
+  void _handleThemeToggle(Object? theme) {
     final cubit = context.read<ThemeCubit>();
     if (theme == 'dark') {
       cubit.setDark();
-      _showSnack('Тёмная тема включена');
     } else {
       cubit.setLight();
-      _showSnack('Светлая тема включена');
     }
   }
 
@@ -135,6 +173,11 @@ class _HomeShellState extends State<HomeShell> {
             icon: Icon(Icons.task_alt_outlined),
             selectedIcon: Icon(Icons.task_alt_rounded),
             label: AppStrings.navTasks,
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.forum_outlined),
+            selectedIcon: Icon(Icons.forum_rounded),
+            label: 'Чат',
           ),
           NavigationDestination(
             icon: Icon(Icons.science_outlined),

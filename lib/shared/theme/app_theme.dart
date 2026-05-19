@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 /// Глобальная тема M3 для демонстрации и защиты проекта.
 abstract final class AppTheme {
-  static const Color _seed = Color(0xFF2563EB);
+  static const Color _seed = Color(0xFF6366F1);
 
   static ThemeData light() {
     final scheme = ColorScheme.fromSeed(

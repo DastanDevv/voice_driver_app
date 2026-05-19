@@ -67,6 +67,10 @@ class RussianNlpEngine {
     'задания': 'tasks',
     'истори': 'history',
     'команд': 'history',
+    'чат': 'chat',
+    'диалог': 'chat',
+    'архитектур': 'architecture',
+    'граф': 'architecture',
   };
 
   static const List<String> _navigateRoots = [
@@ -80,8 +84,8 @@ class RussianNlpEngine {
   ];
 
   static const List<String> _lightThemeRoots = [
-    'светлую тему', 'светлая тема', 'дневной режим', 'светлую тему',
-    'светлый режим',
+    'светлую тему', 'светлая тема', 'дневной режим', 'светлый режим',
+    'белую тему',
   ];
 
   static const List<String> _undoRoots = [

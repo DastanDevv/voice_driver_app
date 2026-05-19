@@ -1,16 +1,113 @@
-# voice_driver_mobile
+# Smart Task Assistant — Voice-Driven UI
 
-A new Flutter project.
+> Магистерская диссертация: **«Разработка мобильного приложения архитектуры голосового управления интерфейсом (Voice-Driven UI) на основе анализа семантического дерева с помощью мобильных технологий»**
 
-## Getting Started
+Flutter-приложение менеджера задач с полностью голосовым управлением. Команда пользователя проходит через многоступенчатый семантический пайплайн с построением иерархического **семантического дерева** и контекстно-зависимым исполнителем.
 
-This project is a starting point for a Flutter application.
+---
 
-A few resources to get you started if this is your first Flutter project:
+## Архитектурный пайплайн
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+```
+🎙 STT  →  ✂ Splitter  →  🧠 NLP Parser  →  🔀 Context Manager
+                                                ↓
+            🔊 TTS  ←  ⚙ Executor  ←  🌳 Semantic Tree Builder
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+| Этап | Класс | Назначение |
+|------|-------|-----------|
+| **STT** | `VoiceServiceImpl` | Распознавание русской речи (speech_to_text) |
+| **Splitter** | `CommandSplitter` | Разделение составных запросов по конъюнкциям («и потом», «а также»…) |
+| **NLP Parser** | `RussianNlpEngine` | Извлечение intent + entities (дата, приоритет, заголовок) |
+| **Context Manager** | `ContextManager` | Склейка фрагментарных уточнений с предыдущим намерением |
+| **Tree Builder** | `SemanticTreeBuilder` | Построение иерархии `ROOT → ACTION → OBJECT → MODIFIERS → VALUE` |
+| **Executor** | `CommandExecutor` | Маппинг семантической команды на действия `TaskCubit` |
+| **TTS** | `VoiceServiceImpl` | Озвучка ответа на русском |
+
+Шина событий `PipelineEventBus` эмиттит сигнал на каждом этапе — это используется в экране **«Архитектура»** для визуализации потока данных в реальном времени.
+
+---
+
+## Ключевые фичи
+
+- 🌳 **Семантическое дерево** с визуализацией top-down (BuchheimWalker) — прямой ответ на тему диссертации
+- 💬 **Чат-диалог** с пользовательскими и ассистент-пузырями (мессенджер-стиль)
+- ⚡ **Живой граф архитектуры** с подсветкой активных узлов в реальном времени
+- 🎙 **Wake-word**: «Привет, ассистент, …» — управление без рук
+- 🔗 **Составные запросы**: «создай задачу X а потом удали Y»
+- 💾 **Hive-персистентность**: задачи, история команд, чат и тема сохраняются между запусками
+- 🧪 **NLP Лаборатория**: пошаговая визуализация разбора фразы (дерево + пайплайн + токены)
+- 📊 **Аналитика**: метрики распознавания, распределение интентов, уверенность
+- 🌗 Тёмная/светлая тема, всё на русском, Material 3
+
+---
+
+## Запуск
+
+```bash
+flutter pub get
+flutter run
+```
+
+### Платформы
+- ✅ Android (минимум API 21)
+- ✅ iOS (требуется `NSMicrophoneUsageDescription` + `NSSpeechRecognitionUsageDescription` — уже в Info.plist)
+
+### Тесты
+
+```bash
+flutter test
+```
+
+50+ юнит-тестов покрывают парсер, контекст, исполнитель, семантическое дерево и составные запросы.
+
+---
+
+## Структура проекта
+
+```
+lib/
+├── core/
+│   ├── nlp/                       # Russian NLP engine + Command splitter
+│   ├── semantic/                  # Semantic command, tree, builder, executor, context
+│   ├── pipeline/                  # PipelineEventBus (события для живого графа)
+│   ├── storage/                   # HiveStorage (инициализация ящиков)
+│   └── voice/                     # VoiceService (STT/TTS) + Coordinator + Wake-word
+├── features/
+│   ├── analytics/                 # Дашборд метрик
+│   ├── architecture/              # Живой граф архитектуры
+│   ├── chat/                      # Чат-диалог как мессенджер
+│   ├── command_history/           # История распознанных команд
+│   ├── home/                      # Корневой shell + страница «О системе»
+│   ├── nlp_lab/                   # NLP Лаборатория (дерево/пайплайн/токены)
+│   └── tasks/                     # CRUD задач + Hive репозиторий
+└── shared/                        # Theme, formatters, strings
+```
+
+---
+
+## Голосовые команды (примеры)
+
+| Команда | Интент |
+|--------|-------|
+| «Создай задачу купить хлеб на завтра» | `create_task` |
+| «Покажи важные задачи» | `show_tasks` |
+| «Выполни задачу купить хлеб» | `complete_task` |
+| «Удали задачу презентацию» | `delete_task` |
+| «Найди задачу хлеб» | `search_task` |
+| «Сколько задач?» | `count_tasks` |
+| «Очисти выполненные» | `clear_completed` |
+| «Открой аналитику» / «Перейди в чат» | `navigate` |
+| «Включи тёмную тему» | `theme_toggle` |
+| «Привет, ассистент, покажи задачи» | `wake-word` + `show_tasks` |
+| «Создай задачу X а потом удали Y» | составной (2 интента) |
+
+---
+
+## Технологический стек
+
+`Flutter 3.x` · `Dart 3.x` · `Material 3` · `BLoC/Cubit` · `Clean Architecture` · `speech_to_text` · `flutter_tts` · `hive_ce` · `graphview` · `uuid` · `equatable` · `intl`
+
+---
+
+© 2026 · Магистерская диссертация по программной инженерии

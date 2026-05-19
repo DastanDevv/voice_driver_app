@@ -8,6 +8,7 @@ class RecordedCommand extends Equatable {
     required this.entities,
     required this.confidence,
     required this.at,
+    this.treeJson,
   });
 
   final String rawText;
@@ -16,6 +17,9 @@ class RecordedCommand extends Equatable {
   final double confidence;
   final DateTime at;
 
+  /// Сериализованное семантическое дерево (для просмотра в истории).
+  final Map<String, dynamic>? treeJson;
+
   @override
-  List<Object?> get props => [rawText, intentCode, entities, confidence, at];
+  List<Object?> get props => [rawText, intentCode, entities, confidence, at, treeJson];
 }

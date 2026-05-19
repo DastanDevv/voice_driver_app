@@ -4,7 +4,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-import '../../../../core/semantic/semantic_command.dart';
 import '../../../../core/semantic/semantic_command_runner.dart';
 import '../../../../core/voice/voice_command_coordinator.dart';
 import '../../../../shared/formatters/ru_date_format.dart';
@@ -91,11 +90,12 @@ class _TaskListPageState extends State<TaskListPage>
     );
   }
 
-  void _applyCommandUx(BuildContext context, SemanticCommand cmd, String raw) {
-    if (!context.mounted) return;
-    if (cmd.intentCode == 'unknown') {
+  void _applyOutcomesUx(BuildContext context, List<RunOutcome> outcomes) {
+    if (!context.mounted || outcomes.isEmpty) return;
+    final last = outcomes.last;
+    if (last.command.intentCode == 'unknown') {
       _showAppSnackBar(AppStrings.unknownCommandSnack);
-    } else if (cmd.confidence < 0.5) {
+    } else if (last.command.confidence < 0.5) {
       _showAppSnackBar(AppStrings.lowConfidenceHint);
     }
   }
@@ -141,8 +141,9 @@ class _TaskListPageState extends State<TaskListPage>
         if (!mounted) return;
         setState(() => _scriptBusy = true);
         try {
-          final (cmd, _) = await widget.commandRunner.run(phrase);
-          _applyCommandUx(context, cmd, phrase);
+          final outcomes = await widget.commandRunner.run(phrase);
+          if (!mounted) return;
+          _applyOutcomesUx(context, outcomes);
         } finally {
           if (mounted) setState(() => _scriptBusy = false);
         }
@@ -263,6 +264,32 @@ class _TaskListPageState extends State<TaskListPage>
             tooltip: AppStrings.historyTooltip,
             onPressed: _openHistory,
           ),
+          ValueListenableBuilder<bool>(
+            valueListenable: widget.voiceCoordinator.wakeWordActive,
+            builder: (context, active, _) {
+              return IconButton(
+                tooltip: active
+                    ? 'Wake-word включён — скажите «Ассистент»'
+                    : 'Включить wake-word',
+                icon: Icon(
+                  active ? Icons.hearing_rounded : Icons.hearing_disabled_rounded,
+                  color: active
+                      ? Theme.of(context).colorScheme.primary
+                      : null,
+                ),
+                onPressed: () {
+                  if (active) {
+                    unawaited(widget.voiceCoordinator.disableWakeWord());
+                  } else {
+                    unawaited(widget.voiceCoordinator.enableWakeWord());
+                    _showAppSnackBar(
+                      'Wake-word включён. Скажите «Ассистент …»',
+                    );
+                  }
+                },
+              );
+            },
+          ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert_rounded),
             tooltip: AppStrings.moreMenu,
@@ -271,21 +298,19 @@ class _TaskListPageState extends State<TaskListPage>
                 unawaited(_runDemoScript());
               } else if (value == 'test') {
                 unawaited(() async {
-                  final (cmd, _) = await widget.commandRunner
+                  final outcomes = await widget.commandRunner
                       .run(SemanticCommandRunner.demoPhrase);
                   if (!context.mounted) return;
-                  _applyCommandUx(
-                    context,
-                    cmd,
-                    SemanticCommandRunner.demoPhrase,
-                  );
+                  _applyOutcomesUx(context, outcomes);
                 }());
               } else if (value == 'about') {
                 Navigator.of(context).push<void>(
                   MaterialPageRoute<void>(
                     builder: (_) => BlocProvider.value(
                       value: context.read<TaskCubit>(),
-                      child: const AboutPage(),
+                      child: AboutPage(
+                        voiceCoordinator: widget.voiceCoordinator,
+                      ),
                     ),
                   ),
                 );
@@ -903,21 +928,28 @@ class _VoiceFab extends StatelessWidget {
           height: 72,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: scheme.primary,
+            gradient: LinearGradient(
+              colors: listening
+                  ? [scheme.error, scheme.tertiary]
+                  : [scheme.primary, scheme.tertiary],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
             boxShadow: [
               BoxShadow(
-                color: scheme.primary.withValues(
-                  alpha: listening ? 0.55 : 0.28,
+                color: (listening ? scheme.error : scheme.primary).withValues(
+                  alpha: listening ? 0.6 : 0.35,
                 ),
-                blurRadius: listening ? 28 : 14,
-                spreadRadius: listening ? 4 : 0,
+                blurRadius: listening ? 32 : 18,
+                spreadRadius: listening ? 6 : 2,
+                offset: const Offset(0, 6),
               ),
             ],
           ),
-          child: Icon(
+          child: const Icon(
             Icons.mic_rounded,
             size: 34,
-            color: scheme.onPrimary,
+            color: Colors.white,
           ),
         ),
       ),
