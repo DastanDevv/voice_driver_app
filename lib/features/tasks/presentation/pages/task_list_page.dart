@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../core/semantic/semantic_command_runner.dart';
 import '../../../../core/voice/voice_command_coordinator.dart';
@@ -231,6 +232,14 @@ class _TaskListPageState extends State<TaskListPage>
     return groups;
   }
 
+  static String _greeting() {
+    final h = DateTime.now().hour;
+    if (h < 6) return 'Доброй ночи';
+    if (h < 12) return 'Доброе утро';
+    if (h < 18) return 'Добрый день';
+    return 'Добрый вечер';
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -272,19 +281,17 @@ class _TaskListPageState extends State<TaskListPage>
                     ? 'Wake-word включён — скажите «Ассистент»'
                     : 'Включить wake-word',
                 icon: Icon(
-                  active ? Icons.hearing_rounded : Icons.hearing_disabled_rounded,
-                  color: active
-                      ? Theme.of(context).colorScheme.primary
-                      : null,
+                  active
+                      ? Icons.hearing_rounded
+                      : Icons.hearing_disabled_rounded,
+                  color: active ? scheme.primary : null,
                 ),
                 onPressed: () {
                   if (active) {
                     unawaited(widget.voiceCoordinator.disableWakeWord());
                   } else {
                     unawaited(widget.voiceCoordinator.enableWakeWord());
-                    _showAppSnackBar(
-                      'Wake-word включён. Скажите «Ассистент …»',
-                    );
+                    _showAppSnackBar('Wake-word включён. Скажите «Ассистент …»');
                   }
                 },
               );
@@ -351,7 +358,9 @@ class _TaskListPageState extends State<TaskListPage>
                     );
               final done = showEmpty
                   ? <Task>[]
-                  : _sorted(state.tasks.where((t) => t.isCompleted).toList());
+                  : _sorted(
+                      state.tasks.where((t) => t.isCompleted).toList(),
+                    );
 
               final total = active.length + done.length;
               final progress = total > 0 ? done.length / total : 0.0;
@@ -359,12 +368,21 @@ class _TaskListPageState extends State<TaskListPage>
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // ── Dashboard header ──────────────────────────────────
+                  _DashboardHeader(
+                    greeting: _greeting(),
+                    activeCount: active.length,
+                    doneCount: done.length,
+                    scheme: scheme,
+                  ),
+                  // ── Progress bar ──────────────────────────────────────
                   if (total > 0)
                     _TaskProgressBar(
                       progress: progress,
                       doneCount: done.length,
                       totalCount: total,
                     ),
+                  // ── Filter chips ──────────────────────────────────────
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                     child: _FilterChipsRow(
@@ -372,6 +390,7 @@ class _TaskListPageState extends State<TaskListPage>
                       onSelected: (f) => unawaited(_applyFilter(f)),
                     ),
                   ),
+                  // ── Task list ─────────────────────────────────────────
                   Expanded(
                     child: showEmpty
                         ? AnimatedSwitcher(
@@ -388,8 +407,7 @@ class _TaskListPageState extends State<TaskListPage>
                               key: ValueKey(
                                 '${state.tasks.length}_$_filter$_sortMode',
                               ),
-                              padding:
-                                  const EdgeInsets.fromLTRB(16, 8, 16, 160),
+                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 180),
                               children: [
                                 if (state.errorMessage != null)
                                   Padding(
@@ -400,7 +418,8 @@ class _TaskListPageState extends State<TaskListPage>
                                         TextButton(
                                           onPressed: () {
                                             setState(
-                                              () => _filter = _FilterChip.all,
+                                              () =>
+                                                  _filter = _FilterChip.all,
                                             );
                                             context
                                                 .read<TaskCubit>()
@@ -415,7 +434,9 @@ class _TaskListPageState extends State<TaskListPage>
                                   if (_filter == _FilterChip.all) ...[
                                     ..._buildGroupedActive(context, active),
                                   ] else ...[
-                                    _SectionHeader(title: AppStrings.activeLabel),
+                                    _SectionHeader(
+                                      title: AppStrings.activeLabel,
+                                    ),
                                     ...active.map((t) => _TaskCard(task: t)),
                                   ],
                                 ],
@@ -456,10 +477,11 @@ class _TaskListPageState extends State<TaskListPage>
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          FloatingActionButton.small(
+          _GradientFab(
             heroTag: 'add_task',
             onPressed: _showAddDialog,
             tooltip: AppStrings.addTaskTooltip,
+            mini: true,
             child: const Icon(Icons.add_rounded),
           ),
           const SizedBox(height: 16),
@@ -507,6 +529,173 @@ class _TaskListPageState extends State<TaskListPage>
 
 enum _DueSection { today, tomorrow, later }
 
+// ── Dashboard Header ────────────────────────────────────────────────────────
+
+class _DashboardHeader extends StatelessWidget {
+  const _DashboardHeader({
+    required this.greeting,
+    required this.activeCount,
+    required this.doneCount,
+    required this.scheme,
+  });
+
+  final String greeting;
+  final int activeCount;
+  final int doneCount;
+  final ColorScheme scheme;
+
+  static String _todayRu() {
+    const months = [
+      'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+      'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
+    ];
+    const days = [
+      'понедельник', 'вторник', 'среда', 'четверг',
+      'пятница', 'суббота', 'воскресенье',
+    ];
+    final now = DateTime.now();
+    final weekday = days[now.weekday - 1];
+    return '${now.day} ${months[now.month - 1]}, $weekday';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: isDark
+                ? [
+                    const Color(0xFF3B1FA3),
+                    const Color(0xFF1E1C35),
+                  ]
+                : [
+                    const Color(0xFF6D28D9),
+                    const Color(0xFF7C3AED),
+                  ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(22),
+          boxShadow: [
+            BoxShadow(
+              color: scheme.primary.withValues(alpha: 0.35),
+              blurRadius: 24,
+              offset: const Offset(0, 8),
+              spreadRadius: -4,
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    greeting,
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.white.withValues(alpha: 0.75),
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _todayRu(),
+                    style: GoogleFonts.inter(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Row(
+              children: [
+                _StatBadge(
+                  icon: Icons.radio_button_unchecked_rounded,
+                  label: '$activeCount',
+                  sublabel: 'актив.',
+                ),
+                const SizedBox(width: 10),
+                _StatBadge(
+                  icon: Icons.check_circle_rounded,
+                  label: '$doneCount',
+                  sublabel: 'готово',
+                  done: true,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StatBadge extends StatelessWidget {
+  const _StatBadge({
+    required this.icon,
+    required this.label,
+    required this.sublabel,
+    this.done = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final String sublabel;
+  final bool done;
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = done
+        ? const Color(0xFF16A34A).withValues(alpha: 0.25)
+        : Colors.white.withValues(alpha: 0.15);
+    final fg = done ? const Color(0xFF4ADE80) : Colors.white;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: fg),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: fg,
+            ),
+          ),
+          Text(
+            sublabel,
+            style: GoogleFonts.inter(
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+              color: fg.withValues(alpha: 0.75),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Empty state ─────────────────────────────────────────────────────────────
+
 class _EmptyTasksState extends StatelessWidget {
   const _EmptyTasksState({super.key});
 
@@ -529,29 +718,41 @@ class _EmptyTasksState extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0.85, end: 1),
-              duration: const Duration(milliseconds: 600),
+              tween: Tween(begin: 0.6, end: 1),
+              duration: const Duration(milliseconds: 700),
               curve: Curves.elasticOut,
               builder: (context, value, child) =>
                   Transform.scale(scale: value, child: child),
               child: Container(
-                width: 100,
-                height: 100,
+                width: 110,
+                height: 110,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: scheme.primaryContainer.withValues(alpha: 0.5),
+                  gradient: LinearGradient(
+                    colors: [scheme.primary, scheme.tertiary],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: scheme.primary.withValues(alpha: 0.4),
+                      blurRadius: 32,
+                      offset: const Offset(0, 10),
+                      spreadRadius: -4,
+                    ),
+                  ],
                 ),
-                child: Icon(
+                child: const Icon(
                   Icons.mic_none_rounded,
                   size: 52,
-                  color: scheme.primary,
+                  color: Colors.white,
                 ),
               ),
             ),
             const SizedBox(height: 24),
             Text(
               AppStrings.emptyListTitle,
-              style: theme.textTheme.titleLarge?.copyWith(
+              style: theme.textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.w800,
               ),
               textAlign: TextAlign.center,
@@ -587,6 +788,9 @@ class _EmptyTasksState extends StatelessWidget {
                       alpha: 0.55,
                     ),
                     borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: scheme.outlineVariant.withValues(alpha: 0.4),
+                    ),
                   ),
                   child: Row(
                     children: [
@@ -616,6 +820,8 @@ class _EmptyTasksState extends StatelessWidget {
   }
 }
 
+// ── Progress bar ─────────────────────────────────────────────────────────────
+
 class _TaskProgressBar extends StatelessWidget {
   const _TaskProgressBar({
     required this.progress,
@@ -632,46 +838,109 @@ class _TaskProgressBar extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
     final pct = (progress * 100).round();
-    final color = pct == 100
-        ? const Color(0xFF16A34A)
-        : scheme.primary;
+    final isComplete = pct == 100;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      child: Row(
-        children: [
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(6),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        decoration: BoxDecoration(
+          color: theme.brightness == Brightness.dark
+              ? scheme.surfaceContainerLow
+              : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: scheme.outlineVariant.withValues(alpha: 0.4),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    isComplete
+                        ? '🎉 Все задачи выполнены!'
+                        : '$doneCount из $totalCount выполнено',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: isComplete
+                          ? const Color(0xFF16A34A)
+                          : scheme.onSurface,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isComplete
+                        ? const Color(0xFF16A34A).withValues(alpha: 0.15)
+                        : scheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '$pct%',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: isComplete
+                          ? const Color(0xFF16A34A)
+                          : scheme.onPrimaryContainer,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
               child: TweenAnimationBuilder<double>(
                 tween: Tween(begin: 0, end: progress),
-                duration: const Duration(milliseconds: 500),
+                duration: const Duration(milliseconds: 600),
                 curve: Curves.easeOutCubic,
                 builder: (context, value, _) {
-                  return LinearProgressIndicator(
-                    value: value,
-                    minHeight: 6,
-                    backgroundColor:
-                        scheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                    valueColor: AlwaysStoppedAnimation<Color>(color),
+                  return Stack(
+                    children: [
+                      Container(
+                        height: 8,
+                        color: scheme.surfaceContainerHighest
+                            .withValues(alpha: 0.5),
+                      ),
+                      FractionallySizedBox(
+                        widthFactor: value,
+                        child: Container(
+                          height: 8,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: isComplete
+                                  ? [
+                                      const Color(0xFF16A34A),
+                                      const Color(0xFF4ADE80),
+                                    ]
+                                  : [
+                                      scheme.primary,
+                                      scheme.tertiary,
+                                    ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   );
                 },
               ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Text(
-            '$doneCount/$totalCount',
-            style: theme.textTheme.labelMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: color,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
+
+// ── Filter chips ─────────────────────────────────────────────────────────────
 
 class _FilterChipsRow extends StatelessWidget {
   const _FilterChipsRow({
@@ -684,13 +953,65 @@ class _FilterChipsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget chip(_FilterChip value, String label) {
+    Widget chip(_FilterChip value, String label, IconData icon) {
       final isSel = selected == value;
-      return FilterChip(
-        label: Text(label),
-        selected: isSel,
-        showCheckmark: false,
-        onSelected: (_) => onSelected(value),
+      final scheme = Theme.of(context).colorScheme;
+      return GestureDetector(
+        onTap: () => onSelected(value),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 240),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            gradient: isSel
+                ? LinearGradient(
+                    colors: [scheme.primary, scheme.tertiary],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  )
+                : null,
+            color: isSel
+                ? null
+                : Theme.of(context).brightness == Brightness.dark
+                    ? scheme.surfaceContainerHigh
+                    : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSel
+                  ? Colors.transparent
+                  : scheme.outlineVariant.withValues(alpha: 0.5),
+            ),
+            boxShadow: isSel
+                ? [
+                    BoxShadow(
+                      color: scheme.primary.withValues(alpha: 0.3),
+                      blurRadius: 12,
+                      offset: const Offset(0, 3),
+                      spreadRadius: -2,
+                    ),
+                  ]
+                : null,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 15,
+                color: isSel ? Colors.white : scheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: isSel ? Colors.white : scheme.onSurface,
+                ),
+              ),
+            ],
+          ),
+        ),
       );
     }
 
@@ -698,16 +1019,26 @@ class _FilterChipsRow extends StatelessWidget {
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          chip(_FilterChip.all, AppStrings.filterAll),
+          chip(_FilterChip.all, AppStrings.filterAll, Icons.list_rounded),
           const SizedBox(width: 8),
-          chip(_FilterChip.today, AppStrings.filterToday),
+          chip(
+            _FilterChip.today,
+            AppStrings.filterToday,
+            Icons.today_rounded,
+          ),
           const SizedBox(width: 8),
-          chip(_FilterChip.important, AppStrings.filterImportant),
+          chip(
+            _FilterChip.important,
+            AppStrings.filterImportant,
+            Icons.bolt_rounded,
+          ),
         ],
       ),
     );
   }
 }
+
+// ── Status banner ────────────────────────────────────────────────────────────
 
 class _StatusBanner extends StatelessWidget {
   const _StatusBanner({
@@ -725,7 +1056,7 @@ class _StatusBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      elevation: 3,
+      elevation: 4,
       shadowColor: Theme.of(context).colorScheme.shadow.withValues(alpha: 0.2),
       borderRadius: BorderRadius.circular(16),
       color: color,
@@ -751,6 +1082,8 @@ class _StatusBanner extends StatelessWidget {
   }
 }
 
+// ── Listening overlay ────────────────────────────────────────────────────────
+
 class _ListeningOverlay extends StatelessWidget {
   const _ListeningOverlay({required this.partialTranscript});
 
@@ -763,66 +1096,97 @@ class _ListeningOverlay extends StatelessWidget {
       child: IgnorePointer(
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: scheme.scrim.withValues(alpha: 0.35),
+            color: scheme.scrim.withValues(alpha: 0.5),
           ),
           child: Center(
-            child: Material(
-              elevation: 8,
-              shadowColor: scheme.shadow.withValues(alpha: 0.25),
-              borderRadius: BorderRadius.circular(20),
-              color: scheme.surface,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 28,
-                  vertical: 24,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      AppStrings.listening,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
+            child: Container(
+              margin: const EdgeInsets.all(32),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 28,
+                vertical: 28,
+              ),
+              decoration: BoxDecoration(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? const Color(0xFF1E1C35)
+                    : Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.3),
+                    blurRadius: 40,
+                    offset: const Offset(0, 16),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [scheme.primary, scheme.error],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: scheme.primary.withValues(alpha: 0.5),
+                          blurRadius: 24,
+                          spreadRadius: 2,
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 20),
-                    const _WaveformBars(),
-                    const SizedBox(height: 16),
-                    ValueListenableBuilder<String>(
-                      valueListenable: partialTranscript,
-                      builder: (context, text, _) {
-                        if (text.isEmpty) return const SizedBox.shrink();
-                        return AnimatedSize(
-                          duration: const Duration(milliseconds: 200),
-                          curve: Curves.easeOutCubic,
-                          child: Container(
-                            constraints: const BoxConstraints(maxWidth: 260),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 10,
-                            ),
-                            decoration: BoxDecoration(
-                              color: scheme.surfaceContainerHighest
-                                  .withValues(alpha: 0.6),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              text,
-                              textAlign: TextAlign.center,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodyMedium
-                                  ?.copyWith(
-                                    fontStyle: FontStyle.italic,
-                                    color: scheme.onSurfaceVariant,
-                                  ),
-                            ),
-                          ),
-                        );
-                      },
+                    child: const Icon(
+                      Icons.mic_rounded,
+                      color: Colors.white,
+                      size: 32,
                     ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    AppStrings.listening,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                  const SizedBox(height: 16),
+                  const _WaveformBars(),
+                  const SizedBox(height: 12),
+                  ValueListenableBuilder<String>(
+                    valueListenable: partialTranscript,
+                    builder: (context, text, _) {
+                      if (text.isEmpty) return const SizedBox.shrink();
+                      return AnimatedSize(
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeOutCubic,
+                        child: Container(
+                          constraints: const BoxConstraints(maxWidth: 260),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: scheme.primaryContainer.withValues(
+                              alpha: 0.5,
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            text,
+                            textAlign: TextAlign.center,
+                            style:
+                                Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                      fontStyle: FontStyle.italic,
+                                      color: scheme.onPrimaryContainer,
+                                    ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
               ),
             ),
           ),
@@ -831,6 +1195,8 @@ class _ListeningOverlay extends StatelessWidget {
     );
   }
 }
+
+// ── Waveform bars ────────────────────────────────────────────────────────────
 
 class _WaveformBars extends StatefulWidget {
   const _WaveformBars();
@@ -869,18 +1235,25 @@ class _WaveformBarsState extends State<_WaveformBars>
           return Row(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.end,
-            children: List.generate(7, (i) {
-              final phase = _c.value * 2 * math.pi + i * 0.55;
+            children: List.generate(9, (i) {
+              final phase = _c.value * 2 * math.pi + i * 0.5;
               final h = 10 + 22 * (0.5 + 0.5 * math.sin(phase));
               return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 2.5),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 80),
-                  width: 5,
-                  height: h.clamp(8.0, 36.0),
+                  width: 4,
+                  height: h.clamp(6.0, 36.0),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(4),
-                    color: scheme.primary.withValues(alpha: 0.75),
+                    gradient: LinearGradient(
+                      colors: [
+                        scheme.primary,
+                        scheme.tertiary,
+                      ],
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                    ),
                   ),
                 ),
               );
@@ -891,6 +1264,8 @@ class _WaveformBarsState extends State<_WaveformBars>
     );
   }
 }
+
+// ── Voice FAB ────────────────────────────────────────────────────────────────
 
 class _VoiceFab extends StatelessWidget {
   const _VoiceFab({
@@ -917,11 +1292,8 @@ class _VoiceFab extends StatelessWidget {
         animation: pulse,
         builder: (context, child) {
           final t = listening ? pulse.value : 0.0;
-          final scale = 1.0 + 0.08 * t;
-          return Transform.scale(
-            scale: scale,
-            child: child,
-          );
+          final scale = 1.0 + 0.1 * t;
+          return Transform.scale(scale: scale, child: child);
         },
         child: Container(
           width: 72,
@@ -930,7 +1302,7 @@ class _VoiceFab extends StatelessWidget {
             shape: BoxShape.circle,
             gradient: LinearGradient(
               colors: listening
-                  ? [scheme.error, scheme.tertiary]
+                  ? [scheme.error, const Color(0xFFFF6B6B)]
                   : [scheme.primary, scheme.tertiary],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
@@ -938,16 +1310,16 @@ class _VoiceFab extends StatelessWidget {
             boxShadow: [
               BoxShadow(
                 color: (listening ? scheme.error : scheme.primary).withValues(
-                  alpha: listening ? 0.6 : 0.35,
+                  alpha: listening ? 0.65 : 0.4,
                 ),
-                blurRadius: listening ? 32 : 18,
+                blurRadius: listening ? 36 : 20,
                 spreadRadius: listening ? 6 : 2,
                 offset: const Offset(0, 6),
               ),
             ],
           ),
-          child: const Icon(
-            Icons.mic_rounded,
+          child: Icon(
+            listening ? Icons.stop_rounded : Icons.mic_rounded,
             size: 34,
             color: Colors.white,
           ),
@@ -957,6 +1329,71 @@ class _VoiceFab extends StatelessWidget {
   }
 }
 
+// ── Gradient mini FAB ─────────────────────────────────────────────────────────
+
+class _GradientFab extends StatelessWidget {
+  const _GradientFab({
+    required this.onPressed,
+    required this.child,
+    this.heroTag,
+    this.tooltip,
+    this.mini = false,
+  });
+
+  final VoidCallback onPressed;
+  final Widget child;
+  final Object? heroTag;
+  final String? tooltip;
+  final bool mini;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final size = mini ? 44.0 : 56.0;
+
+    Widget btn = GestureDetector(
+      onTap: onPressed,
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(mini ? 14 : 18),
+          gradient: LinearGradient(
+            colors: [
+              Color.lerp(scheme.primary, scheme.tertiary, 0.3)!,
+              scheme.primary,
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: scheme.primary.withValues(alpha: 0.35),
+              blurRadius: 14,
+              offset: const Offset(0, 4),
+              spreadRadius: -2,
+            ),
+          ],
+        ),
+        child: IconTheme(
+          data: const IconThemeData(color: Colors.white, size: 22),
+          child: child,
+        ),
+      ),
+    );
+
+    if (heroTag != null) {
+      btn = Hero(tag: heroTag!, child: btn);
+    }
+    if (tooltip != null) {
+      btn = Tooltip(message: tooltip!, child: btn);
+    }
+    return btn;
+  }
+}
+
+// ── Section header ────────────────────────────────────────────────────────────
+
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({required this.title});
 
@@ -964,19 +1401,39 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 18, 4, 10),
-      child: Text(
-        title,
-        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              color: Theme.of(context).colorScheme.primary,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.3,
+      padding: const EdgeInsets.fromLTRB(0, 18, 0, 10),
+      child: Row(
+        children: [
+          Container(
+            width: 3,
+            height: 16,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [scheme.primary, scheme.tertiary],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+              borderRadius: BorderRadius.circular(2),
             ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            title,
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: scheme.primary,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.3,
+                ),
+          ),
+        ],
       ),
     );
   }
 }
+
+// ── Task card ─────────────────────────────────────────────────────────────────
 
 class _TaskCard extends StatelessWidget {
   const _TaskCard({required this.task});
@@ -987,16 +1444,17 @@ class _TaskCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     final high = task.priority == 'high';
-    final cardColor = high
-        ? scheme.errorContainer.withValues(alpha: 0.35)
-        : scheme.surface;
-    final borderColor = high
-        ? scheme.error.withValues(alpha: 0.35)
-        : scheme.outlineVariant.withValues(alpha: 0.5);
+
+    final cardColor = isDark
+        ? scheme.surfaceContainerLow
+        : Colors.white;
+
+    final accentColor = high ? const Color(0xFFEF4444) : scheme.primary;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 10),
       child: Dismissible(
         key: ValueKey('task_${task.id}'),
         direction: DismissDirection.horizontal,
@@ -1004,14 +1462,19 @@ class _TaskCard extends StatelessWidget {
           alignment: Alignment.centerLeft,
           padding: const EdgeInsets.only(left: 20),
           decoration: BoxDecoration(
-            color: scheme.tertiaryContainer,
+            gradient: LinearGradient(
+              colors: [
+                scheme.primaryContainer,
+                scheme.primaryContainer.withValues(alpha: 0.6),
+              ],
+            ),
             borderRadius: BorderRadius.circular(18),
           ),
           child: Icon(
             task.isCompleted
                 ? Icons.replay_rounded
                 : Icons.check_rounded,
-            color: scheme.onTertiaryContainer,
+            color: scheme.onPrimaryContainer,
             size: 28,
           ),
         ),
@@ -1019,7 +1482,12 @@ class _TaskCard extends StatelessWidget {
           alignment: Alignment.centerRight,
           padding: const EdgeInsets.only(right: 20),
           decoration: BoxDecoration(
-            color: scheme.errorContainer,
+            gradient: LinearGradient(
+              colors: [
+                scheme.errorContainer.withValues(alpha: 0.6),
+                scheme.errorContainer,
+              ],
+            ),
             borderRadius: BorderRadius.circular(18),
           ),
           child: Icon(
@@ -1037,38 +1505,76 @@ class _TaskCard extends StatelessWidget {
           await cubit.deleteTask(task.id);
           return true;
         },
-        child: Material(
-          elevation: 2,
-          shadowColor: scheme.shadow.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(18),
-          color: cardColor,
-          child: InkWell(
+        child: Container(
+          decoration: BoxDecoration(
+            color: cardColor,
             borderRadius: BorderRadius.circular(18),
-            onTap: () => _showTaskDetail(context, task),
-            child: Ink(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: borderColor),
+            border: Border.all(
+              color: high
+                  ? accentColor.withValues(alpha: 0.25)
+                  : scheme.outlineVariant.withValues(alpha: isDark ? 0.2 : 0.5),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: isDark
+                    ? Colors.black.withValues(alpha: 0.2)
+                    : scheme.shadow.withValues(alpha: 0.06),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+                spreadRadius: -2,
               ),
+            ],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(18),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(18),
+              onTap: () => _showTaskDetail(context, task),
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 14, 12, 14),
+                padding: const EdgeInsets.fromLTRB(0, 12, 12, 12),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Checkbox.adaptive(
-                        value: task.isCompleted,
-                        onChanged: (_) => context
-                            .read<TaskCubit>()
-                            .toggleCompleted(task.id),
+                    // Left accent bar
+                    Container(
+                      width: 4,
+                      height: 56,
+                      margin: const EdgeInsets.only(right: 8),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            accentColor,
+                            accentColor.withValues(alpha: 0.3),
+                          ],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        ),
+                        borderRadius: const BorderRadius.horizontal(
+                          right: Radius.circular(4),
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 4),
+                    // Checkbox
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Transform.scale(
+                        scale: 0.9,
+                        child: Checkbox.adaptive(
+                          value: task.isCompleted,
+                          activeColor: scheme.primary,
+                          onChanged: (_) => context
+                              .read<TaskCubit>()
+                              .toggleCompleted(task.id),
+                        ),
+                      ),
+                    ),
+                    // Content
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          const SizedBox(height: 4),
                           Text(
                             task.title,
                             style: theme.textTheme.titleMedium?.copyWith(
@@ -1076,54 +1582,35 @@ class _TaskCard extends StatelessWidget {
                               decoration: task.isCompleted
                                   ? TextDecoration.lineThrough
                                   : null,
+                              decorationColor:
+                                  scheme.onSurfaceVariant.withValues(alpha: 0.5),
                               color: task.isCompleted
                                   ? scheme.onSurfaceVariant
                                   : scheme.onSurface,
                             ),
                           ),
-                          const SizedBox(height: 10),
+                          const SizedBox(height: 8),
                           Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
+                            spacing: 6,
+                            runSpacing: 6,
                             crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
                               if (task.dueAt != null)
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.event_rounded,
-                                      size: 18,
-                                      color: scheme.primary,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      formatRuShortDayMonth(task.dueAt!),
-                                      style: theme.textTheme.labelLarge
-                                          ?.copyWith(
-                                        color: scheme.onSurfaceVariant,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
+                                _InfoBadge(
+                                  icon: Icons.event_rounded,
+                                  label: formatRuShortDayMonth(task.dueAt!),
+                                  color: scheme.primary,
+                                  bgColor: scheme.primaryContainer.withValues(
+                                    alpha: 0.5,
+                                  ),
                                 ),
                               if (high)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: scheme.error.withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Text(
-                                    AppStrings.highPriorityLabel,
-                                    style: theme.textTheme.labelMedium
-                                        ?.copyWith(
-                                      color: scheme.error,
-                                      fontWeight: FontWeight.w700,
-                                    ),
+                                _InfoBadge(
+                                  icon: Icons.bolt_rounded,
+                                  label: AppStrings.highPriorityLabel,
+                                  color: const Color(0xFFEF4444),
+                                  bgColor: const Color(0xFFEF4444).withValues(
+                                    alpha: 0.12,
                                   ),
                                 ),
                             ],
@@ -1131,9 +1618,14 @@ class _TaskCard extends StatelessWidget {
                         ],
                       ),
                     ),
+                    // Delete button
                     IconButton(
                       tooltip: AppStrings.deleteTooltip,
-                      icon: const Icon(Icons.delete_outline_rounded),
+                      icon: Icon(
+                        Icons.delete_outline_rounded,
+                        size: 20,
+                        color: scheme.onSurfaceVariant.withValues(alpha: 0.6),
+                      ),
                       onPressed: () =>
                           context.read<TaskCubit>().deleteTask(task.id),
                     ),
@@ -1148,23 +1640,66 @@ class _TaskCard extends StatelessWidget {
   }
 }
 
+class _InfoBadge extends StatelessWidget {
+  const _InfoBadge({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.bgColor,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+  final Color bgColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Task detail bottom sheet ──────────────────────────────────────────────────
+
 void _showTaskDetail(BuildContext context, Task task) {
   final theme = Theme.of(context);
   final scheme = theme.colorScheme;
+  final isDark = theme.brightness == Brightness.dark;
   final high = task.priority == 'high';
 
   showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: scheme.surface,
+    backgroundColor: isDark ? const Color(0xFF1E1C35) : Colors.white,
     shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
     ),
     builder: (ctx) {
       return Padding(
         padding: EdgeInsets.fromLTRB(
           24,
-          20,
+          8,
           24,
           24 + MediaQuery.of(ctx).viewPadding.bottom,
         ),
@@ -1174,7 +1709,7 @@ void _showTaskDetail(BuildContext context, Task task) {
           children: [
             Center(
               child: Container(
-                width: 40,
+                width: 36,
                 height: 4,
                 decoration: BoxDecoration(
                   color: scheme.outlineVariant,
@@ -1184,26 +1719,41 @@ void _showTaskDetail(BuildContext context, Task task) {
             ),
             const SizedBox(height: 20),
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  width: 44,
-                  height: 44,
+                  width: 48,
+                  height: 48,
                   decoration: BoxDecoration(
-                    color: high
-                        ? scheme.errorContainer
-                        : scheme.primaryContainer,
-                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: high
+                          ? [
+                              const Color(0xFFEF4444),
+                              const Color(0xFFF97316),
+                            ]
+                          : [scheme.primary, scheme.tertiary],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: (high ? const Color(0xFFEF4444) : scheme.primary)
+                            .withValues(alpha: 0.3),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
                   child: Icon(
                     task.isCompleted
                         ? Icons.check_circle_rounded
                         : Icons.radio_button_unchecked_rounded,
-                    color: high
-                        ? scheme.onErrorContainer
-                        : scheme.onPrimaryContainer,
+                    color: Colors.white,
+                    size: 24,
                   ),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 14),
                 Expanded(
                   child: Text(
                     task.title,
@@ -1224,10 +1774,10 @@ void _showTaskDetail(BuildContext context, Task task) {
               children: [
                 if (high)
                   _DetailChip(
-                    icon: Icons.priority_high_rounded,
+                    icon: Icons.bolt_rounded,
                     label: AppStrings.highPriorityLabel,
-                    color: scheme.error,
-                    bgColor: scheme.errorContainer.withValues(alpha: 0.4),
+                    color: const Color(0xFFEF4444),
+                    bgColor: const Color(0xFFEF4444).withValues(alpha: 0.12),
                   ),
                 if (task.dueAt != null)
                   _DetailChip(
@@ -1238,7 +1788,8 @@ void _showTaskDetail(BuildContext context, Task task) {
                   ),
                 _DetailChip(
                   icon: Icons.access_time_rounded,
-                  label: '${task.createdAt.day}.${task.createdAt.month.toString().padLeft(2, "0")}.${task.createdAt.year}',
+                  label:
+                      '${task.createdAt.day}.${task.createdAt.month.toString().padLeft(2, "0")}.${task.createdAt.year}',
                   color: scheme.onSurfaceVariant,
                   bgColor: scheme.surfaceContainerHighest,
                 ),
@@ -1246,8 +1797,9 @@ void _showTaskDetail(BuildContext context, Task task) {
                   icon: task.isCompleted
                       ? Icons.check_circle_outline_rounded
                       : Icons.circle_outlined,
-                  label:
-                      task.isCompleted ? AppStrings.completedLabel : AppStrings.activeLabel,
+                  label: task.isCompleted
+                      ? AppStrings.completedLabel
+                      : AppStrings.activeLabel,
                   color: task.isCompleted
                       ? const Color(0xFF16A34A)
                       : scheme.primary,
@@ -1278,7 +1830,7 @@ void _showTaskDetail(BuildContext context, Task task) {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: FilledButton.tonalIcon(
+                  child: FilledButton.icon(
                     onPressed: () {
                       Navigator.pop(ctx);
                       context.read<TaskCubit>().deleteTask(task.id);
@@ -1286,8 +1838,10 @@ void _showTaskDetail(BuildContext context, Task task) {
                     icon: const Icon(Icons.delete_outline_rounded),
                     label: const Text(AppStrings.deleteTooltip),
                     style: FilledButton.styleFrom(
-                      backgroundColor: scheme.errorContainer,
-                      foregroundColor: scheme.onErrorContainer,
+                      backgroundColor: const Color(0xFFEF4444).withValues(
+                        alpha: 0.15,
+                      ),
+                      foregroundColor: const Color(0xFFEF4444),
                     ),
                   ),
                 ),
@@ -1316,7 +1870,7 @@ class _DetailChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(20),
@@ -1324,14 +1878,15 @@ class _DetailChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 18, color: color),
+          Icon(icon, size: 15, color: color),
           const SizedBox(width: 6),
           Text(
             label,
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: color,
-                  fontWeight: FontWeight.w700,
-                ),
+            style: GoogleFonts.inter(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
           ),
         ],
       ),
@@ -1339,7 +1894,8 @@ class _DetailChip extends StatelessWidget {
   }
 }
 
-/// Контроллер живёт в [State.dispose] — не освобождаем до полного снятия маршрута диалога.
+// ── Add task dialog ───────────────────────────────────────────────────────────
+
 class _AddTaskDialogSheet extends StatefulWidget {
   const _AddTaskDialogSheet();
 

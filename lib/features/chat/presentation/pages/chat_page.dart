@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../core/semantic/semantic_command_runner.dart';
 import '../../../../core/voice/voice_command_coordinator.dart';
@@ -10,8 +11,7 @@ import '../../domain/chat_message.dart';
 import '../cubit/chat_cubit.dart';
 import '../cubit/chat_state.dart';
 
-/// Экран чат-диалога: пользователь видит свои фразы и ответы ассистента
-/// в виде пузырей сообщений, как в мессенджере.
+/// Экран чат-диалога: голосовые/текстовые команды → пузыри ответов.
 class ChatPage extends StatefulWidget {
   const ChatPage({
     super.key,
@@ -39,7 +39,9 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
       duration: const Duration(milliseconds: 900),
     );
     widget.voiceCoordinator.listening.addListener(_onListeningChanged);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom(jump: true));
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _scrollToBottom(jump: true),
+    );
   }
 
   void _onListeningChanged() {
@@ -88,7 +90,8 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   Future<void> _processUserText(String text) async {
     final cubit = context.read<ChatCubit>();
     cubit.appendUserMessage(text);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _scrollToBottom());
 
     final outcomes = await widget.commandRunner.run(text);
     if (!mounted) return;
@@ -100,48 +103,43 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
         cubit.appendAssistantMessage(phrase, command: o.command);
       }
     }
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _scrollToBottom());
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    final scheme = Theme.of(context).colorScheme;
     final listening = widget.voiceCoordinator.listening.value;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Диалог'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.delete_sweep_rounded),
-            tooltip: 'Очистить диалог',
-            onPressed: () {
-              showDialog<void>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  title: const Text('Очистить диалог?'),
-                  content: const Text('История переписки будет удалена.'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(ctx).pop(),
-                      child: const Text('Отмена'),
-                    ),
-                    FilledButton(
-                      onPressed: () {
-                        context.read<ChatCubit>().clear();
-                        Navigator.of(ctx).pop();
-                      },
-                      child: const Text('Очистить'),
-                    ),
-                  ],
+      appBar: _ChatAppBar(
+        scheme: scheme,
+        onClear: () {
+          showDialog<void>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Очистить диалог?'),
+              content: const Text('История переписки будет удалена.'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('Отмена'),
                 ),
-              );
-            },
-          ),
-        ],
+                FilledButton(
+                  onPressed: () {
+                    context.read<ChatCubit>().clear();
+                    Navigator.of(ctx).pop();
+                  },
+                  child: const Text('Очистить'),
+                ),
+              ],
+            ),
+          );
+        },
       ),
       body: SafeArea(
+        bottom: false,
         child: Column(
           children: [
             Expanded(
@@ -167,8 +165,10 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                         return const _TypingBubble();
                       }
                       final msg = state.messages[index];
-                      final prev = index > 0 ? state.messages[index - 1] : null;
-                      final showHeader = prev == null || prev.role != msg.role;
+                      final prev =
+                          index > 0 ? state.messages[index - 1] : null;
+                      final showHeader =
+                          prev == null || prev.role != msg.role;
                       return _MessageBubble(
                         message: msg,
                         showHeader: showHeader,
@@ -197,6 +197,119 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   }
 }
 
+// ── Custom chat AppBar ────────────────────────────────────────────────────────
+
+class _ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
+  const _ChatAppBar({required this.scheme, required this.onClear});
+
+  final ColorScheme scheme;
+  final VoidCallback onClear;
+
+  @override
+  Size get preferredSize => const Size.fromHeight(72);
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      height: preferredSize.height +
+          MediaQuery.of(context).padding.top,
+      padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
+      decoration: BoxDecoration(
+        color: isDark
+            ? const Color(0xFF0C0B1A)
+            : const Color(0xFFF3F0FF),
+        border: Border(
+          bottom: BorderSide(
+            color: scheme.outlineVariant.withValues(alpha: 0.3),
+          ),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [scheme.primary, scheme.tertiary],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                    color: scheme.primary.withValues(alpha: 0.35),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.auto_awesome_rounded,
+                color: Colors.white,
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Ассистент',
+                    style: GoogleFonts.inter(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.3,
+                      color: scheme.onSurface,
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF22C55E),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        'Онлайн · Voice-Driven UI',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              icon: Icon(
+                Icons.delete_sweep_rounded,
+                color: scheme.onSurfaceVariant,
+              ),
+              tooltip: 'Очистить диалог',
+              onPressed: onClear,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Empty chat ────────────────────────────────────────────────────────────────
+
 class _EmptyChat extends StatelessWidget {
   const _EmptyChat({required this.onTryPhrase});
 
@@ -215,35 +328,40 @@ class _EmptyChat extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     return ListView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 120),
       children: [
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         Center(
-          child: Container(
-            width: 96,
-            height: 96,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(
-                colors: [
-                  scheme.primary,
-                  scheme.tertiary,
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: scheme.primary.withValues(alpha: 0.35),
-                  blurRadius: 24,
-                  offset: const Offset(0, 8),
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0.6, end: 1),
+            duration: const Duration(milliseconds: 700),
+            curve: Curves.elasticOut,
+            builder: (context, v, child) =>
+                Transform.scale(scale: v, child: child),
+            child: Container(
+              width: 100,
+              height: 100,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  colors: [scheme.primary, scheme.tertiary],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
-              ],
-            ),
-            child: const Icon(
-              Icons.auto_awesome_rounded,
-              size: 44,
-              color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: scheme.primary.withValues(alpha: 0.4),
+                    blurRadius: 28,
+                    offset: const Offset(0, 10),
+                    spreadRadius: -4,
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.auto_awesome_rounded,
+                size: 44,
+                color: Colors.white,
+              ),
             ),
           ),
         ),
@@ -263,41 +381,67 @@ class _EmptyChat extends StatelessWidget {
           textAlign: TextAlign.center,
           style: theme.textTheme.bodyMedium?.copyWith(
             color: scheme.onSurfaceVariant,
-            height: 1.5,
+            height: 1.55,
           ),
         ),
         const SizedBox(height: 28),
-        Text(
-          'ПОПРОБУЙТЕ',
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: scheme.onSurfaceVariant,
-            letterSpacing: 1.2,
-            fontWeight: FontWeight.w700,
-          ),
+        Row(
+          children: [
+            Container(
+              width: 3,
+              height: 14,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [scheme.primary, scheme.tertiary],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'ПОПРОБУЙТЕ',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+                letterSpacing: 1.5,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 12),
         ..._suggestions.map(
           (s) => Padding(
-            padding: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.only(bottom: 8),
             child: Material(
-              color: scheme.surfaceContainerHighest.withValues(alpha: 0.6),
+              color: theme.brightness == Brightness.dark
+                  ? const Color(0xFF1E1C35)
+                  : Colors.white,
               borderRadius: BorderRadius.circular(14),
               child: InkWell(
                 borderRadius: BorderRadius.circular(14),
                 onTap: () => onTryPhrase(s),
-                child: Padding(
+                child: Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 14,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color:
+                          scheme.outlineVariant.withValues(alpha: 0.4),
+                    ),
                   ),
                   child: Row(
                     children: [
                       Icon(
                         Icons.format_quote_rounded,
                         color: scheme.primary,
-                        size: 20,
+                        size: 18,
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 10),
                       Expanded(
                         child: Text(
                           s,
@@ -307,9 +451,9 @@ class _EmptyChat extends StatelessWidget {
                         ),
                       ),
                       Icon(
-                        Icons.send_rounded,
+                        Icons.north_east_rounded,
                         color: scheme.outline,
-                        size: 18,
+                        size: 16,
                       ),
                     ],
                   ),
@@ -323,6 +467,8 @@ class _EmptyChat extends StatelessWidget {
   }
 }
 
+// ── Message bubble ────────────────────────────────────────────────────────────
+
 class _MessageBubble extends StatelessWidget {
   const _MessageBubble({required this.message, required this.showHeader});
 
@@ -333,16 +479,19 @@ class _MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     final isUser = message.role == ChatRole.user;
     final isAssistant = message.role == ChatRole.assistant;
 
     final bubbleColor = isUser
-        ? scheme.primary
+        ? null // uses gradient
         : isAssistant
-            ? scheme.surfaceContainerHigh
+            ? (isDark
+                ? const Color(0xFF1E1C35)
+                : Colors.white)
             : scheme.tertiaryContainer;
     final textColor = isUser
-        ? scheme.onPrimary
+        ? Colors.white
         : isAssistant
             ? scheme.onSurface
             : scheme.onTertiaryContainer;
@@ -368,7 +517,7 @@ class _MessageBubble extends StatelessWidget {
           padding: EdgeInsets.only(
             top: 4,
             bottom: 6,
-            left: isUser ? 0 : 44,
+            left: isUser ? 0 : 40,
             right: isUser ? 8 : 0,
           ),
           child: Row(
@@ -391,7 +540,7 @@ class _MessageBubble extends StatelessWidget {
               Text(
                 _formatTime(message.at),
                 style: theme.textTheme.labelSmall?.copyWith(
-                  color: scheme.onSurfaceVariant.withValues(alpha: 0.6),
+                  color: scheme.onSurfaceVariant.withValues(alpha: 0.55),
                 ),
               ),
             ],
@@ -406,7 +555,7 @@ class _MessageBubble extends StatelessWidget {
             isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          if (!isUser && !showHeader) const SizedBox(width: 44),
+          if (!isUser && !showHeader) const SizedBox(width: 40),
           Flexible(
             child: AnimatedSize(
               duration: const Duration(milliseconds: 180),
@@ -419,12 +568,27 @@ class _MessageBubble extends StatelessWidget {
                 ),
                 decoration: BoxDecoration(
                   color: bubbleColor,
+                  gradient: isUser
+                      ? LinearGradient(
+                          colors: [scheme.primary, scheme.tertiary],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        )
+                      : null,
                   borderRadius: radius,
+                  border: isUser
+                      ? null
+                      : Border.all(
+                          color: scheme.outlineVariant
+                              .withValues(alpha: isDark ? 0.2 : 0.4),
+                        ),
                   boxShadow: [
                     BoxShadow(
-                      color: scheme.shadow.withValues(alpha: 0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, 2),
+                      color: isUser
+                          ? scheme.primary.withValues(alpha: 0.2)
+                          : scheme.shadow.withValues(alpha: 0.04),
+                      blurRadius: isUser ? 14 : 8,
+                      offset: const Offset(0, 3),
                     ),
                   ],
                 ),
@@ -437,11 +601,11 @@ class _MessageBubble extends StatelessWidget {
                       message.text,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: textColor,
-                        height: 1.35,
+                        height: 1.45,
                       ),
                     ),
                     if (isAssistant && message.intentCode != null) ...[
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 8),
                       Wrap(
                         spacing: 6,
                         runSpacing: 4,
@@ -474,7 +638,7 @@ class _MessageBubble extends StatelessWidget {
         return Opacity(
           opacity: t,
           child: Transform.translate(
-            offset: Offset(0, 12 * (1 - t)),
+            offset: Offset(0, 14 * (1 - t)),
             child: child,
           ),
         );
@@ -497,6 +661,8 @@ class _MessageBubble extends StatelessWidget {
   }
 }
 
+// ── Assistant avatar ──────────────────────────────────────────────────────────
+
 class _AssistantAvatar extends StatelessWidget {
   const _AssistantAvatar({required this.scheme});
   final ColorScheme scheme;
@@ -513,15 +679,24 @@ class _AssistantAvatar extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: scheme.primary.withValues(alpha: 0.3),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: const Icon(
         Icons.auto_awesome_rounded,
         color: Colors.white,
-        size: 16,
+        size: 15,
       ),
     );
   }
 }
+
+// ── Intent chip ───────────────────────────────────────────────────────────────
 
 class _IntentChip extends StatelessWidget {
   const _IntentChip({required this.label, this.confidence});
@@ -535,19 +710,22 @@ class _IntentChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: scheme.primaryContainer.withValues(alpha: 0.7),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
         label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: scheme.onPrimaryContainer,
-              fontWeight: FontWeight.w700,
-              fontFamily: 'monospace',
-            ),
+        style: GoogleFonts.inter(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: scheme.onPrimaryContainer,
+          letterSpacing: 0.2,
+        ),
       ),
     );
   }
 }
+
+// ── Confidence badge ──────────────────────────────────────────────────────────
 
 class _ConfidenceBadge extends StatelessWidget {
   const _ConfidenceBadge({required this.confidence});
@@ -555,7 +733,6 @@ class _ConfidenceBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final color = confidence >= 0.9
         ? const Color(0xFF16A34A)
         : confidence >= 0.6
@@ -564,19 +741,22 @@ class _ConfidenceBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(10),
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
         '${(confidence * 100).round()}%',
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: color,
+        style: GoogleFonts.inter(
+          fontSize: 11,
           fontWeight: FontWeight.w800,
+          color: color,
         ),
       ),
     );
   }
 }
+
+// ── Typing bubble ─────────────────────────────────────────────────────────────
 
 class _TypingBubble extends StatefulWidget {
   const _TypingBubble();
@@ -606,6 +786,7 @@ class _TypingBubbleState extends State<_TypingBubble>
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8, top: 4),
       child: Row(
@@ -616,12 +797,19 @@ class _TypingBubbleState extends State<_TypingBubble>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
-              color: scheme.surfaceContainerHigh,
+              color: isDark
+                  ? const Color(0xFF1E1C35)
+                  : Colors.white,
               borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(20),
                 topRight: Radius.circular(20),
                 bottomRight: Radius.circular(20),
                 bottomLeft: Radius.circular(6),
+              ),
+              border: Border.all(
+                color: scheme.outlineVariant.withValues(
+                  alpha: isDark ? 0.2 : 0.4,
+                ),
               ),
             ),
             child: AnimatedBuilder(
@@ -631,9 +819,9 @@ class _TypingBubbleState extends State<_TypingBubble>
                   mainAxisSize: MainAxisSize.min,
                   children: List.generate(3, (i) {
                     final t = (_c.value + i * 0.2) % 1.0;
-                    final s = 0.4 + 0.6 * (t < 0.5 ? t * 2 : (1 - t) * 2);
+                    final s = 0.35 + 0.65 * (t < 0.5 ? t * 2 : (1 - t) * 2);
                     return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                      padding: const EdgeInsets.symmetric(horizontal: 2.5),
                       child: Opacity(
                         opacity: s,
                         child: Container(
@@ -641,7 +829,7 @@ class _TypingBubbleState extends State<_TypingBubble>
                           height: 7,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: scheme.onSurfaceVariant,
+                            color: scheme.primary,
                           ),
                         ),
                       ),
@@ -656,6 +844,8 @@ class _TypingBubbleState extends State<_TypingBubble>
     );
   }
 }
+
+// ── Chat input bar ────────────────────────────────────────────────────────────
 
 class _ChatInputBar extends StatelessWidget {
   const _ChatInputBar({
@@ -680,18 +870,26 @@ class _ChatInputBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
-        color: scheme.surface,
+        color: isDark ? const Color(0xFF0C0B1A) : const Color(0xFFF3F0FF),
         border: Border(
-          top: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.4)),
+          top: BorderSide(
+            color: scheme.outlineVariant.withValues(alpha: 0.3),
+          ),
         ),
       ),
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+      padding: EdgeInsets.fromLTRB(
+        12,
+        10,
+        12,
+        12 + MediaQuery.of(context).padding.bottom,
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // partial transcript preview
           if (listening)
             ValueListenableBuilder<String>(
               valueListenable: partial,
@@ -705,52 +903,76 @@ class _ChatInputBar extends StatelessWidget {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: scheme.primaryContainer.withValues(alpha: 0.5),
+                    gradient: LinearGradient(
+                      colors: [
+                        scheme.primaryContainer.withValues(alpha: 0.4),
+                        scheme.primaryContainer.withValues(alpha: 0.2),
+                      ],
+                    ),
                     borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: scheme.primary.withValues(alpha: 0.3),
+                    ),
                   ),
                   child: Text(
                     text,
-                    style: theme.textTheme.bodyMedium?.copyWith(
+                    style: GoogleFonts.inter(
+                      fontSize: 14,
                       fontStyle: FontStyle.italic,
                       color: scheme.onPrimaryContainer,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 );
               },
             ),
+          // Input row
           Row(
             children: [
               Expanded(
-                child: TextField(
-                  controller: controller,
-                  textInputAction: TextInputAction.send,
-                  onSubmitted: (_) => onSend(),
-                  decoration: InputDecoration(
-                    hintText: 'Напишите команду…',
-                    filled: true,
-                    fillColor:
-                        scheme.surfaceContainerHighest.withValues(alpha: 0.55),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? const Color(0xFF1E1C35)
+                        : Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: listening
+                          ? scheme.primary.withValues(alpha: 0.6)
+                          : scheme.outlineVariant.withValues(alpha: 0.4),
+                      width: listening ? 1.5 : 1,
                     ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(24),
-                      borderSide: BorderSide.none,
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(24),
-                      borderSide: BorderSide.none,
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(24),
-                      borderSide: BorderSide(color: scheme.primary, width: 1.5),
-                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: listening
+                            ? scheme.primary.withValues(alpha: 0.1)
+                            : Colors.transparent,
+                        blurRadius: 12,
+                        spreadRadius: 2,
+                      ),
+                    ],
                   ),
-                  textCapitalization: TextCapitalization.sentences,
+                  child: TextField(
+                    controller: controller,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => onSend(),
+                    decoration: InputDecoration(
+                      hintText: 'Напишите команду…',
+                      filled: false,
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 12,
+                      ),
+                    ),
+                    textCapitalization: TextCapitalization.sentences,
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
+              // Mic button
               Listener(
                 behavior: HitTestBehavior.opaque,
                 onPointerDown: (_) => onMicDown(),
@@ -759,7 +981,7 @@ class _ChatInputBar extends StatelessWidget {
                 child: AnimatedBuilder(
                   animation: pulse,
                   builder: (context, child) {
-                    final s = 1 + 0.08 * (listening ? pulse.value : 0);
+                    final s = 1 + 0.1 * (listening ? pulse.value : 0);
                     return Transform.scale(scale: s, child: child);
                   },
                   child: Container(
@@ -769,7 +991,7 @@ class _ChatInputBar extends StatelessWidget {
                       shape: BoxShape.circle,
                       gradient: LinearGradient(
                         colors: listening
-                            ? [scheme.error, scheme.tertiary]
+                            ? [scheme.error, const Color(0xFFFF6B6B)]
                             : [scheme.primary, scheme.tertiary],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
@@ -777,24 +999,52 @@ class _ChatInputBar extends StatelessWidget {
                       boxShadow: [
                         BoxShadow(
                           color: (listening ? scheme.error : scheme.primary)
-                              .withValues(alpha: 0.4),
-                          blurRadius: listening ? 18 : 10,
+                              .withValues(alpha: listening ? 0.5 : 0.3),
+                          blurRadius: listening ? 20 : 12,
                           spreadRadius: listening ? 2 : 0,
+                          offset: const Offset(0, 3),
                         ),
                       ],
                     ),
                     child: Icon(
                       listening ? Icons.stop_rounded : Icons.mic_rounded,
                       color: Colors.white,
+                      size: 22,
                     ),
                   ),
                 ),
               ),
               const SizedBox(width: 6),
-              IconButton.filled(
-                onPressed: onSend,
-                icon: const Icon(Icons.send_rounded),
-                tooltip: 'Отправить',
+              // Send button
+              GestureDetector(
+                onTap: onSend,
+                child: Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    gradient: LinearGradient(
+                      colors: [
+                        Color.lerp(scheme.primary, scheme.tertiary, 0.4)!,
+                        scheme.primary,
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: scheme.primary.withValues(alpha: 0.3),
+                        blurRadius: 12,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.send_rounded,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                ),
               ),
             ],
           ),
